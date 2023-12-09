@@ -1,4 +1,9 @@
+# python==3.9
 tqdm
 pdf2image
 imutils
-opencv-python
+opencv-python==4.8.1.78
+torch
+torchvision
+torchaudio
+easyocr

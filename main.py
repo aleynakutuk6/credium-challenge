@@ -8,6 +8,8 @@ import string
 import cv2
 import imutils
 
+from easyocr import Reader
+from paddleocr import PaddleOCR
 from pdf2image import convert_from_path
 from tqdm import tqdm
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
@@ -19,41 +21,34 @@ from shapedetector import ShapeDetector
 parser = argparse.ArgumentParser()
 parser.add_argument('-pdf', '--pdf-path', default=None, type=str, help="Path to either a single pdf or folder of pdfs.")
 parser.add_argument('-ocr', '--ocr-path', default=None, type=str, help="Path to a folder of txts.")
+parser.add_argument("-om", "--ocr-model", type=str, default=None, help="OCR model to use. Either None, easyocr or paddleocr.")
 parser.add_argument('-png', '--png-path', default=None, type=str, help="Path to a folder of pngs.")
 parser.add_argument('-s', '--save-dir', default=None, type=str, help="Path to an output folder.")
-parser.add_argument('-sm', '--segment-model-type', default="vit_h", type=str)
-parser.add_argument('-sc', '--segment-checkpoint', default="checkpoints/sam_vit_h_4b8939.pth", type=str)
-parser.add_argument('-so', '--segment-output-mode', default="binary_mask", type=str)
 args = parser.parse_args()
+
+
+def filter_masks(masks, min_area_ratio=0.05, max_area_ratio=0.80):
     
-
-# This function is taken from a paper implementation called as segment_anything, 
-# please refer to: https://github.com/facebookresearch/segment-anything
-
-def write_masks_to_folder(masks: List[Dict[str, Any]], path: str) -> None:
-    header = "id,area,bbox_x0,bbox_y0,bbox_w,bbox_h,point_input_x,point_input_y,predicted_iou,stability_score,crop_box_x0,crop_box_y0,crop_box_w,crop_box_h"
-    metadata = [header]
+    """
+        Args:
+            masks: a list of ndarray. It is the output of a segmentation model.
+            min_area_ratio (float): to remove small regions and holes in masks with area smaller than min_area_ratio.
+        Returns:
+            filtered_masks: returns a list of masks if masked area is bigger than min_area_ratio.
+    """
+    
+    filtered_masks = []
     for i, mask_data in enumerate(masks):
         mask = mask_data["segmentation"]
-        filename = f"{i}.png"
-        cv2.imwrite(os.path.join(path, filename), mask * 255)
-        mask_metadata = [
-            str(i),
-            str(mask_data["area"]),
-            *[str(x) for x in mask_data["bbox"]],
-            *[str(x) for x in mask_data["point_coords"][0]],
-            str(mask_data["predicted_iou"]),
-            str(mask_data["stability_score"]),
-            *[str(x) for x in mask_data["crop_box"]],
-        ]
-        row = ",".join(mask_metadata)
-        metadata.append(row)
-    metadata_path = os.path.join(path, "metadata.csv")
-    with open(metadata_path, "w") as f:
-        f.write("\n".join(metadata))
+        h, w = mask.shape[:2]
+        val = mask.sum()
+        
+        mask_area_ratio = val / (h * w)
+        if mask_area_ratio > min_area_ratio and mask_area_ratio < max_area_ratio:
+            filtered_masks.append(mask)
+        
+    return filtered_masks
 
-    return
-    
 
 def read_pngs(png_path):
 
@@ -149,23 +144,63 @@ def preprocess(text):
     res_text = res_text.strip()
     
     return res_text
+
+
+def run_ocr_on_pages(pages_dict, reader, model_type, save_dir=None):
+
+    """
+        Args:
+            pages_dict: gets a dict of page image list to be processed by OCR model.
+            reader: OCR reading model.
+            model_type: Either easyocr or paddleocr.
+            save_dir: to save text data of pdfs as json dict. If given None, no dict is saved.
+        Returns:
+            save_dict: returns a dictionary of texts. The key is the record_id of pdf file, and the value is a list of strings.
+    """
+                
+    save_dict = {}
+    
+    for record_id in tqdm(pages_dict):
+        
+        if record_id not in save_dict.keys():
+            save_dict[record_id] = ""
+        
+        lines = []   
+        for page in pages_dict[record_id]:
+            if model_type == "easyocr":
+                result = reader.readtext(page, detail=0)
+                text = " ".join(result)
+            elif model_type == "paddleocr":
+                result = reader.ocr(page, cls=True)
+                text = ""
+                for boxes, (word, conf) in result[0]:
+                    text += word + " "
+                text = text[:-1]
+            
+            lines.append(text)
+            
+        processed_lines = preprocess(lines)
+        save_dict[record_id] += " " + processed_lines
+    
+    if save_dir is not None:
+        txt_path = os.path.join(save_dir, 'ocr_out')
+        os.system(f"mkdir -p {txt_path}")
+        with open(os.path.join(txt_path, "text_data.json"), "w") as f:
+            json.dump(save_dict, f)
+    
+    return save_dict  
     
     
-def get_ocr_data(ocr_path=None, pages=None, save_dir=None):
+    
+def load_ocr_from_txt(ocr_path=None, save_dir=None):
 
     """
         Args:
             ocr_path: gets either a single txt file or folder of txts.
-            pages: gets a list of pages to be processed by OCR model.
             save_dir: to save text data of pdfs as json dict. If given None, no dict is saved.
         Returns:
-            pages: returns a dictionary of pdf texts. The key is the record_id of pdf file, and the value is a list of strings.
+            save_dict: returns a dictionary of pdf texts. The key is the record_id of pdf file, and the value is a list of strings.
     """
-    
-    assert ocr_path is None or pages is None
-    
-    if ocr_path is None:
-        raise NotImplementedError
     
     files = []
     if not os.path.isdir(ocr_path):
@@ -179,7 +214,7 @@ def get_ocr_data(ocr_path=None, pages=None, save_dir=None):
     
     for file_ in tqdm(files):
         file_name = file_.split("/")[-1]
-        record_id = file_name.split("-")[0]
+        record_id = file_name.split("-")[0].replace(".txt", "")
         
         if record_id not in save_dict.keys():
             save_dict[record_id] = ""
@@ -262,8 +297,8 @@ def detect_shapes(masks, search_shape="pentagon"):
     """
     
     
-    for i, mask_data in enumerate(masks):
-        image = mask_data["segmentation"].astype(np.uint8) * 255
+    for i, mask in enumerate(masks):
+        image = mask.astype(np.uint8) * 255
         resized = imutils.resize(image, width=300)
         ratio = image.shape[0] / float(resized.shape[0])
         
@@ -295,20 +330,38 @@ if args.png_path is None:
     print("PDF pages are converted to images.")
 else:
     pages_dict = read_pngs(args.png_path)
+
+ocr_model = args.ocr_model
+if ocr_model is not None:
+    if ocr_model == "easyocr":
+        reader = Reader(["de"], gpu=True)
+        
+    elif ocr_model == "paddleocr":
+        reader = PaddleOCR(use_angle_cls=True, lang='german', use_gpu=True, show_log=False)
     
-if args.ocr_path is None:
-    ocr_dict = get_ocr_data(pages=pages, save_dir=args.save_dir)
+    else:
+        raise ValueError
+        
+    ocr_dict = run_ocr_on_pages(pages_dict, reader, ocr_model, save_dir=args.save_dir)
 else:
-    ocr_dict = get_ocr_data(ocr_path=args.ocr_path, save_dir=args.save_dir)
+    assert args.ocr_path is not None
+    
+    ocr_dict = load_ocr_from_txt(ocr_path=args.ocr_path, save_dir=args.save_dir)
 print("OCR text data is saved.")
 
 print("Loading segmentation model...")
-sam = sam_model_registry[args.segment_model_type](checkpoint=args.segment_checkpoint)
+sam = sam_model_registry["vit_h"](checkpoint="checkpoints/sam_vit_h_4b8939.pth")
 _ = sam.to(device="cuda")
-generator = SamAutomaticMaskGenerator(sam, output_mode=args.segment_output_mode) 
+generator = SamAutomaticMaskGenerator(sam, 
+    min_mask_region_area=1000, 
+    output_mode="binary_mask") 
  
 print("Searching for special words in OCR text outputs...")
 
+f = open("results.csv", "w")
+f.write("record_id,shape_flag,keller_opts,dach_opts\n")
+f.close()
+    
 shape_dict = {}
 for record_id in tqdm(ocr_dict.keys()):
     keller_opts, dach_opts = search_words(ocr_dict[record_id], keller_words=[" keller", " kellergeschoss", " kg "], converted_words=[" dachgescho", " dg "], dach_words=[" dach"])
@@ -318,17 +371,14 @@ for record_id in tqdm(ocr_dict.keys()):
         
         page = cv2.cvtColor(page, cv2.COLOR_BGR2RGB)
         masks = generator.generate(page)  # page masks are taken to detect shapes
+        masks = filter_masks(masks)
         
         if args.save_dir is not None:
-            save_base = os.path.join(args.save_dir, "segmentation-out", record_id + "_" + str(page_cnt+1))
-            os.system(f"mkdir -p {save_base}")
-            if args.segment_output_mode == "binary_mask":
-                write_masks_to_folder(masks, save_base)
-            else:
-                save_file = save_base + ".json"
-                with open(save_file, "w") as f:
-                    json.dump(masks, f)
-                    
+            save_base = os.path.join(args.save_dir, "segment-out", record_id + "_" + str(page_cnt+1))
+            os.system(f"mkdir -p {save_base}")            
+            for i, mask in enumerate(masks):
+                cv2.imwrite(os.path.join(save_base, f"{i}.png"), mask * 255)
+                  
         # Shape detection
         res_flag = detect_shapes(masks)  # 1 if a pentagon shape exist in a given page, 0 if not.
         
@@ -338,9 +388,11 @@ for record_id in tqdm(ocr_dict.keys()):
     
     shape_dict[record_id] = {"shape_flag": shape_flag, "keller_opts": keller_opts, "dach_opts": dach_opts}
     
-with open(os.path.join(args.save_dir, "shape_dict.json"), "w") as f:
-    json.dump(shape_dict, f)
-print("Done!")
+    f = open("results.csv", "a")
+    f.write(f"{record_id},{shape_flag},{str(keller_opts)},{str(dach_opts)}\n")
+    f.close()
+    
+print("Done!!!")
     
     
     
