@@ -20,16 +20,16 @@ pip install "paddleocr>=2.0.1"
 
 ## <a name="GettingStarted"></a>Getting Started
 
-First download all the weights from the link: [model checkpoint](#model-checkpoints). Place the weight files into 'checkpoints/' folder. 
+First download all the weights from the link: [model checkpoint](#segment-anything-model-checkpoints). Place the weight files into `checkpoints/` folder. 
 
 
-- To start your evaluation from pdf file, use '--pdfs <path/to/pdf_files>'.
+- To start your evaluation from pdf file, use `--pdfs <path/to/pdf_files>`.
 
-- To evaluate directly from page images extracted from pdfs, use '--pngs <path/to/png_files>'. Each page image should be named as '<record_id>_<page_cnt>.png'.
+- To evaluate directly from page images extracted from pdfs, use `--pngs <path/to/png_files>`. Each page image should be named as `<record_id>_<page_cnt>.png`.
 
-- To run OCR model on pngs or pdfs, use '--ocr-model <easyocr or paddleocr>'. If you have already extracted OCR text files, then do not specify this option but set '--ocr-path <path/to/txt_files>'. Each txt file should be named as '<record_id>.txt'.
+- To run OCR model on pngs or pdfs, use `--ocr-model <easyocr or paddleocr>`. If you have already extracted OCR text files, then do not specify this option but set `--ocr-path <path/to/txt_files>`. Each txt file should be named as `<record_id>.txt`.
 
-- To save the pages from pdfs, the cleaned OCR texts, and the extracted segmentation maps, you may set a saving directory with '--save-dir <path/to/save_dir>'.
+- To save the pages from pdfs, the cleaned OCR texts, and the extracted segmentation maps, you may set a saving directory with `--save-dir <path/to/save_dir>`.
 
 Here is an example usage of my pipeline:
 
@@ -42,7 +42,7 @@ python main.py --pngs <path/to/png_files> --ocr-model "easyocr" --save-dir "out"
 ```
 
 
-## <a name="Models"></a>Segment_Anything Model Checkpoints
+## <a name="Models"></a>Segment Anything Model Checkpoints
 
 Click the links below to download the checkpoint for the corresponding model type.
 
