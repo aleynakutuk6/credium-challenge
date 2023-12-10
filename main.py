@@ -8,14 +8,13 @@ import string
 import cv2
 import imutils
 
-from easyocr import Reader
-from paddleocr import PaddleOCR
-from pdf2image import convert_from_path
 from tqdm import tqdm
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 from typing import Any, Dict, List
-from shapedetector import ShapeDetector
- 
+from roofdetector import RoofDetector
+from easyocr import Reader
+from paddleocr import PaddleOCR
+from pdf2image import convert_from_path
            
 # Parsing arguments
 parser = argparse.ArgumentParser()
@@ -27,12 +26,13 @@ parser.add_argument('-s', '--save-dir', default=None, type=str, help="Path to an
 args = parser.parse_args()
 
 
-def filter_masks(masks, min_area_ratio=0.05, max_area_ratio=0.80):
+def filter_masks(masks, min_area_ratio=0.015, max_area_ratio=0.80):
     
     """
         Args:
             masks: a list of ndarray. It is the output of a segmentation model.
             min_area_ratio (float): to remove small regions and holes in masks with area smaller than min_area_ratio.
+            max_area_ratio (float): to remove redundant big regions n masks with area higher than max_area_ratio.
         Returns:
             filtered_masks: returns a list of masks if masked area is bigger than min_area_ratio.
     """
@@ -185,7 +185,7 @@ def run_ocr_on_pages(pages_dict, reader, model_type, save_dir=None):
     if save_dir is not None:
         txt_path = os.path.join(save_dir, 'ocr_out')
         os.system(f"mkdir -p {txt_path}")
-        with open(os.path.join(txt_path, "text_data.json"), "w") as f:
+        with open(os.path.join(txt_path, f"text_data_{model_type}.json"), "w") as f:
             json.dump(save_dict, f)
     
     return save_dict  
@@ -227,13 +227,13 @@ def load_ocr_from_txt(ocr_path=None, save_dir=None):
     if save_dir is not None:
         txt_path = os.path.join(save_dir, 'ocr_out')
         os.system(f"mkdir -p {txt_path}")
-        with open(os.path.join(txt_path, "text_data.json"), "w") as f:
+        with open(os.path.join(txt_path, "text_data_None.json"), "w") as f:
             json.dump(save_dict, f)
     
     return save_dict   
 
 
-def search_words(text, keller_words, converted_words, dach_words):
+def search_words(text, keller_words, converted_words, dach_words, ober_words):
 
     """
         Args:
@@ -241,9 +241,11 @@ def search_words(text, keller_words, converted_words, dach_words):
             keller_words: a list of words to detect basement existence. (0: not exist, 1: exist)
             converted_words: a list of words to detect roof conversion. (0: converted)
             dach_words: a list of words to detect roof conversion. (0: converted, 1: convertible, 2: flat)
+            ober_words: a list of words to detect obergeschoss existence. (0: not exist, 1: exist)
         Returns:
             keller_opts: a list of possible keller class options.
             dach_opts: a list of possible dach class options.
+            ober_opts: a list of possible ober class options.
     """
     
     def check_match(text, match_list):
@@ -252,7 +254,7 @@ def search_words(text, keller_words, converted_words, dach_words):
                 return True
         return False
            
-    keller_opts, dach_opts = set(), set()
+    keller_opts, dach_opts, ober_opts = set(), set(), set()
     
     #### PART 1: keller existence check
     
@@ -270,10 +272,17 @@ def search_words(text, keller_words, converted_words, dach_words):
     # roof is either converted or convertible, but not a flat.
     elif check_match(text, dach_words):
         dach_opts.add(0)  
-        dach_opts.add(1)      
+        dach_opts.add(1)   
+        
+    #### PART 3: obergeschoss existence check   
+     
+    # obergeschoss exists
+    if check_match(text, ober_words):
+        ober_opts.add(1)  
              
     keller_opts = list(keller_opts)
     dach_opts = list(dach_opts)
+    ober_opts = list(ober_opts)
     
     # keller does not exist.
     if len(keller_opts) == 0:
@@ -283,47 +292,91 @@ def search_words(text, keller_words, converted_words, dach_words):
     if len(dach_opts) == 0:
         dach_opts.append(2)
     
-    return keller_opts, dach_opts 
+    # obergeschoss does not exist.
+    if len(ober_opts) == 0:
+        ober_opts.append(0)
+        
+    return keller_opts, dach_opts, ober_opts
     
- 
-def detect_shapes(masks, search_shape="pentagon"):
+    
+def detect_roof_from_masks(masks, no_dach_num_floors, save_dir):
     
     """
         Args:
             masks: a list of ndarray. It is the output of a segmentation model.
-            search_shape: a shape category name that will be searched in the masks.
+            no_dach_num_floors: number of floors without including roof.
         Returns:
-            1 if search_shape exist, 0 if not. 
+            1 if roof exist, 0 if not. 
+    """
+
+    detector = RoofDetector()
+    for i, orig_mask in enumerate(masks):
+        img = orig_mask.astype(np.uint8) * 255
+        img = imutils.resize(img, width=700)        
+        rgb_img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        ret,thresh = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY)
+        cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = imutils.grab_contours(cnts)
+        
+        if save_dir is not None:
+            save_base = os.path.join(save_dir, f"segment-out-{ocr_model}", record_id + "_" + str(page_cnt+1))
+            os.system(f"mkdir -p {save_base}")
+            img_path = os.path.join(save_base, f"{i}.png")
+        else:
+            img_path = None
+        
+        res_flag = detector.detect(contours, no_dach_num_floors, img_path=img_path)
+        
+        if res_flag:
+            return True
+    return False
+
+
+def decide_on_ober_existence(ober_opt):
+    
+    """
+        Args:
+            ober_opt: (0: not exist, 1: exist)
+        
     """
     
+    return ober_opt[0]
+
+
+def decide_on_keller_existence(keller_opt):
     
-    for i, mask in enumerate(masks):
-        image = mask.astype(np.uint8) * 255
-        resized = imutils.resize(image, width=300)
-        ratio = image.shape[0] / float(resized.shape[0])
+    """
+        Future Work: it can be improved using the shape detector, now using only ocr text output while deciding.
+        Args:
+            keller_opt: (0: not exist, 1: exist)
         
-        blurred = cv2.GaussianBlur(resized, (5, 5), 0)
-        thresh = cv2.threshold(blurred, 60, 255, cv2.THRESH_BINARY)[1]
+    """
+    
+    return keller_opt[0]
 
-        cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cnts = imutils.grab_contours(cnts)
-        sd = ShapeDetector()
 
-        for c in cnts:
-            M = cv2.moments(c)
-            if M["m00"] == 0:
-                continue
-                
-            cX = int((M["m10"] / M["m00"]) * ratio)
-            cY = int((M["m01"] / M["m00"]) * ratio)
-            shape = sd.detect(c)
+def decide_on_roof_conversion(dach_opts, shape_flag):
+     
+    """
+        This function utilize from both OCR model text outputs (dach_opts), 
+        and segmentation model (segment_anything) + a shape detector algorithm.
+        If there is a pentagon shape, it is possible to find a house with a roof.
+        Args:
+            dach_opts: (0: converted, 1: convertible, 2: flat)
+            shape_flag: (0: no pentagon, 1: pentagon exists
+        
+    """
+    
+    if len(dach_opts) == 1 and dach_opts[0] == 0:
+        return 0
+    else:
+        if shape_flag:
+            return 1
+        else:
+            return 2
             
-            # pentagon is found
-            if shape == search_shape:
-                return 1
-    return 0
-
-   
+            
+            
 print("Started ...")
 if args.png_path is None:
     pages_dict = pdf_to_png(args.pdf_path, args.save_dir)
@@ -337,7 +390,7 @@ if ocr_model is not None:
         reader = Reader(["de"], gpu=True)
         
     elif ocr_model == "paddleocr":
-        reader = PaddleOCR(use_angle_cls=True, lang='german', use_gpu=True, show_log=False)
+        reader = PaddleOCR(use_angle_cls=True, lang='german', use_gpu=False, show_log=False)
     
     else:
         raise ValueError
@@ -347,6 +400,7 @@ else:
     assert args.ocr_path is not None
     
     ocr_dict = load_ocr_from_txt(ocr_path=args.ocr_path, save_dir=args.save_dir)
+    
 print("OCR text data is saved.")
 
 print("Loading segmentation model...")
@@ -358,13 +412,25 @@ generator = SamAutomaticMaskGenerator(sam,
  
 print("Searching for special words in OCR text outputs...")
 
-f = open("results.csv", "w")
-f.write("record_id,shape_flag,keller_opts,dach_opts\n")
+f = open(f"results_{ocr_model}.csv", "w")
+f.write("record_id,num-floors,roof-conversion,keller-existence,pentagon-existence,roof-options,ober-options\n")
 f.close()
-    
+
+ocr_keys = [int(num) for num in ocr_dict.keys()]
+ocr_keys = [str(key) for key in sorted(ocr_keys)]
+
 shape_dict = {}
-for record_id in tqdm(ocr_dict.keys()):
-    keller_opts, dach_opts = search_words(ocr_dict[record_id], keller_words=[" keller", " kellergeschoss", " kg "], converted_words=[" dachgescho", " dg "], dach_words=[" dach"])
+for record_id in tqdm(ocr_keys):
+    keller_opt, dach_opts, ober_opt = search_words(
+        ocr_dict[record_id], 
+        keller_words=[" keller", " kellergeschoss", "veller", " keler", " ke ler"], 
+        converted_words=[" dachgescho", " dg ", "dad gesdos"], 
+        dach_words=[" dach"],
+        ober_words=[" obergescho"])
+    
+    keller_opt = decide_on_keller_existence(keller_opt) 
+    ober_opt = decide_on_ober_existence(ober_opt)
+    
     pages = pages_dict[record_id]
     shape_flag = 0
     for page_cnt, page in enumerate(pages):
@@ -373,23 +439,17 @@ for record_id in tqdm(ocr_dict.keys()):
         masks = generator.generate(page)  # page masks are taken to detect shapes
         masks = filter_masks(masks)
         
-        if args.save_dir is not None:
-            save_base = os.path.join(args.save_dir, "segment-out", record_id + "_" + str(page_cnt+1))
-            os.system(f"mkdir -p {save_base}")            
-            for i, mask in enumerate(masks):
-                cv2.imwrite(os.path.join(save_base, f"{i}.png"), mask * 255)
-                  
-        # Shape detection
-        res_flag = detect_shapes(masks)  # 1 if a pentagon shape exist in a given page, 0 if not.
+        no_dach_num_floors = keller_opt + ober_opt + 1
+        shape_found = detect_roof_from_masks(masks, no_dach_num_floors, args.save_dir)
+    
+    dach_opt = decide_on_roof_conversion(dach_opts, shape_found)
+    if dach_opt != 2:
+        num_floors = no_dach_num_floors + 1
+    else:
+        num_floors = no_dach_num_floors
         
-        # do not update if pentagon is already found!! 
-        if shape_flag != 1:
-            shape_flag = res_flag
-    
-    shape_dict[record_id] = {"shape_flag": shape_flag, "keller_opts": keller_opts, "dach_opts": dach_opts}
-    
-    f = open("results.csv", "a")
-    f.write(f"{record_id},{shape_flag},{str(keller_opts)},{str(dach_opts)}\n")
+    f = open(f"results_{ocr_model}.csv", "a")
+    f.write(f"{record_id},{str(num_floors)},{str(dach_opt)},{str(keller_opt)},{shape_flag},{str(dach_opts)},{str(ober_opt)}\n")
     f.close()
     
 print("Done!!!")

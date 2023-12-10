@@ -1,5 +1,9 @@
 # credium-challenge
 
+![project-pipeline](assets/model_diagram.png?raw=true)
+
+This project has two main tasks: detecting basement presence (0 if not exist, 1 if exist) and categorizing roof conversions into three classes (converted, convertible (not converted) or flat) based on building plans. The model takes PDF files, each corresponding to a unique address/building. My goal is to develop a solution that can accurately detect the presence of a basement and classify roof conversions for each building.
+
 ## Installation
 
 The code requires `python>=3.8`, as well as `pytorch>=2.0`. Please follow the instructions [here](https://pytorch.org/get-started/locally/) to install both PyTorch dependencies. 
@@ -34,11 +38,11 @@ First download all the weights from the link: [model checkpoint](#segment-anythi
 Here is an example usage of my pipeline:
 
 ```
-python main.py --pdfs <path/to/pdf_files> --ocr-path <path/to/txt_files>
+python main.py --png <path/to/png_files> --ocr-path <path/to/txt_files>
 
 or
 
-python main.py --pngs <path/to/png_files> --ocr-model "easyocr" --save-dir "out"
+python main.py --pdf <path/to/pdf_files> --ocr-model "easyocr" --save-dir "out"
 ```
 
 
@@ -53,4 +57,4 @@ Click the links below to download the checkpoint for the corresponding model typ
 
 - **OCR:** [2OCR](https://2ocr.com/online-ocr-german/), [paddleOCR](https://github.com/PaddlePaddle/PaddleOCR), [easyOCR](https://pypi.org/project/easyocr/)
 - **Image Segmentation:** [segment_anything](https://github.com/facebookresearch/segment-anything)
-- **Shape Detection:** [shape_detection](https://pyimagesearch.com/2016/02/08/opencv-shape-detection/)
+- **Contour Detector:** [contour_detection]()
