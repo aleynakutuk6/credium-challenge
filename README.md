@@ -1,6 +1,6 @@
 # credium-challenge
 
-![project-pipeline](assets/model_diagram.png?raw=true)
+![project-pipeline](assets/model-diagram.png?raw=true)
 
 This project has two main tasks: detecting basement presence (0 if not exist, 1 if exist) and categorizing roof conversions into three classes (converted, convertible (not converted) or flat) based on building plans. The model takes PDF files, each corresponding to a unique address/building. My goal is to develop a solution that can accurately detect the presence of a basement and classify roof conversions for each building.
 
