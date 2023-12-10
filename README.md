@@ -1,8 +1,15 @@
-# credium-challenge
+# Roof and Basement Detection from Building Plans
 
 ![project-pipeline](assets/model-diagram.png?raw=true)
 
-This project has two main tasks: detecting basement presence (0 if not exist, 1 if exist) and categorizing roof conversions into three classes (converted, convertible (not converted) or flat) based on building plans. The model takes PDF files, each corresponding to a unique address/building. My goal is to develop a solution that can accurately detect the presence of a basement and classify roof conversions for each building.
+This project has two main tasks: 
+
+- detecting basement presence (0 if not exist, 1 if exist),
+- categorizing roof conversions into three classes (converted, convertible (not converted) or flat)
+
+based on building plans. The model takes PDF files, each corresponding to a unique address/building. 
+
+My goal is to develop a solution that can accurately detect the presence of a basement and classify roof conversions for each building. Moreover, the number of floors in the building is detected by utilizing the segmentation model and OCR text outputs.
 
 ## Installation
 
@@ -57,4 +64,4 @@ Click the links below to download the checkpoint for the corresponding model typ
 
 - **OCR:** [2OCR](https://2ocr.com/online-ocr-german/), [paddleOCR](https://github.com/PaddlePaddle/PaddleOCR), [easyOCR](https://pypi.org/project/easyocr/)
 - **Image Segmentation:** [segment_anything](https://github.com/facebookresearch/segment-anything)
-- **Contour Detector:** [contour_detection]()
+- [**OpenCV**](https://opencv.org/)
