@@ -54,8 +54,7 @@ def read_pngs(png_path):
 
     """
         Args:
-            pdf_path: gets either a single pdf file or folder of pdfs.
-            save_dir: to save pages of pdfs as jpgs. If given None, no image is saved.
+            png_path: pdf pages image folder.
         Returns:
             pages_dict: returns a list of images as np.ndarray.
     """
@@ -84,7 +83,7 @@ def pdf_to_png(pdf_path, save_dir=None):
     """
         Args:
             pdf_path: gets either a single pdf file or folder of pdfs.
-            save_dir: to save pages of pdfs as jpgs. If given None, no image is saved.
+            save_dir: to save pages of pdfs as pngs. If given None, no image will be saved.
         Returns:
             pages_dict: returns a list of images as np.ndarray.
     """
@@ -121,9 +120,9 @@ def preprocess(text):
     
     """
         Args:
-            text: gets either a single string or a list of strings.
+            text: gets either a single text or a list of texts.
         Returns:
-            res_text: returns a preprocessed words as a single string.
+            res_text: returns a preprocessed text.
     """
     
     if type(text) == str:
@@ -150,12 +149,13 @@ def run_ocr_on_pages(pages_dict, reader, model_type, save_dir=None):
 
     """
         Args:
-            pages_dict: gets a dict of page image list to be processed by OCR model.
+            pages_dict: gets a dict of page images to be processed by an OCR model.
             reader: OCR reading model.
-            model_type: Either easyocr or paddleocr.
-            save_dir: to save text data of pdfs as json dict. If given None, no dict is saved.
+            model_type: should give either "easyocr" or "paddleocr" as string.
+            save_dir: to save output of OCR model as a dictionary . If given None, no dict will be saved.
         Returns:
-            save_dict: returns a dictionary of texts. The key is the record_id of pdf file, and the value is a list of strings.
+            save_dict: returns a dictionary of texts. The key is the record_id of pdf file, and the value is a single string which contains
+                all words in pages.
     """
                 
     save_dict = {}
@@ -199,7 +199,8 @@ def load_ocr_from_txt(ocr_path=None, save_dir=None):
             ocr_path: gets either a single txt file or folder of txts.
             save_dir: to save text data of pdfs as json dict. If given None, no dict is saved.
         Returns:
-            save_dict: returns a dictionary of pdf texts. The key is the record_id of pdf file, and the value is a list of strings.
+            save_dict: returns a dictionary of pdf texts. The key is the record_id of pdf file, and the value is a single string which contains
+                all words in pages.
     """
     
     files = []
@@ -299,7 +300,7 @@ def search_words(text, keller_words, converted_words, dach_words, ober_words):
     return keller_opts, dach_opts, ober_opts
     
     
-def detect_roof_from_masks(masks, no_dach_num_floors, save_dir):
+def detect_roof_from_masks(masks, no_dach_num_floors, img_path):
     
     """
         Args:
@@ -317,45 +318,26 @@ def detect_roof_from_masks(masks, no_dach_num_floors, save_dir):
         ret,thresh = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY)
         cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours = imutils.grab_contours(cnts)
-        
-        if save_dir is not None:
-            save_base = os.path.join(save_dir, f"segment-out-{ocr_model}", record_id + "_" + str(page_cnt+1))
-            os.system(f"mkdir -p {save_base}")
-            img_path = os.path.join(save_base, f"{i}.png")
-        else:
-            img_path = None
-        
-        res_flag = detector.detect(contours, no_dach_num_floors, img_path=img_path)
-        
+
+        if img_path is not None:
+            res_flag = detector.detect(contours, no_dach_num_floors, img_path=os.path.join(img_path, f"{i}.png"))
         if res_flag:
             return True
     return False
 
 
 def decide_on_ober_existence(ober_opt):
-    
-    """
-        Args:
-            ober_opt: (0: not exist, 1: exist)
-        
-    """
-    
+    # ober_opt: (0: not exist, 1: exist)
     return ober_opt[0]
 
 
 def decide_on_keller_existence(keller_opt):
-    
-    """
-        Future Work: it can be improved using the shape detector, now using only ocr text output while deciding.
-        Args:
-            keller_opt: (0: not exist, 1: exist)
-        
-    """
-    
+    # Future Work: it can be improved using the shape detector, now using only ocr text output while deciding.
+    # keller_opt: (0: not exist, 1: exist)   
     return keller_opt[0]
 
 
-def decide_on_roof_conversion(dach_opts, shape_flag):
+def decide_on_roof_conversion(dach_opts, shape_found):
      
     """
         This function utilize from both OCR model text outputs (dach_opts), 
@@ -363,14 +345,14 @@ def decide_on_roof_conversion(dach_opts, shape_flag):
         If there is a pentagon shape, it is possible to find a house with a roof.
         Args:
             dach_opts: (0: converted, 1: convertible, 2: flat)
-            shape_flag: (0: no pentagon, 1: pentagon exists
+            shape_found: (0: no pentagon, 1: pentagon exists
         
     """
     
     if len(dach_opts) == 1 and dach_opts[0] == 0:
         return 0
     else:
-        if shape_flag:
+        if shape_found:
             return 1
         else:
             return 2
@@ -421,27 +403,37 @@ ocr_keys = [str(key) for key in sorted(ocr_keys)]
 
 shape_dict = {}
 for record_id in tqdm(ocr_keys):
+    
     keller_opt, dach_opts, ober_opt = search_words(
         ocr_dict[record_id], 
-        keller_words=[" keller", " kellergeschoss", "veller", " keler", " ke ler"], 
-        converted_words=[" dachgescho", " dg ", "dad gesdos"], 
-        dach_words=[" dach"],
+        keller_words=[" keller ", " kellergesch", " veller ", " keler ", " ke ler "], 
+        converted_words=[" dachgescho", " dg ", " dad gesdos ", "dachausbau"], 
+        dach_words=[" dach", " dachaufbau"],
         ober_words=[" obergescho"])
     
+    # print("record id", record_id)
     keller_opt = decide_on_keller_existence(keller_opt) 
     ober_opt = decide_on_ober_existence(ober_opt)
-    
     pages = pages_dict[record_id]
-    shape_flag = 0
+    shape_found = False
     for page_cnt, page in enumerate(pages):
-        
+        # print("page cnt", page_cnt)
         page = cv2.cvtColor(page, cv2.COLOR_BGR2RGB)
         masks = generator.generate(page)  # page masks are taken to detect shapes
         masks = filter_masks(masks)
         
         no_dach_num_floors = keller_opt + ober_opt + 1
-        shape_found = detect_roof_from_masks(masks, no_dach_num_floors, args.save_dir)
-    
+        
+        if args.save_dir is not None:
+            img_path = os.path.join(args.save_dir, f"segment-out-{ocr_model}", record_id + "_" + str(page_cnt+1))
+            os.system(f"mkdir -p {img_path}")
+        else:
+            img_path = None
+            
+        shape_found_page = detect_roof_from_masks(masks, no_dach_num_floors, img_path)
+        if shape_found_page:
+            shape_found = shape_found_page
+        
     dach_opt = decide_on_roof_conversion(dach_opts, shape_found)
     if dach_opt != 2:
         num_floors = no_dach_num_floors + 1
@@ -449,7 +441,7 @@ for record_id in tqdm(ocr_keys):
         num_floors = no_dach_num_floors
         
     f = open(f"results_{ocr_model}.csv", "a")
-    f.write(f"{record_id},{str(num_floors)},{str(dach_opt)},{str(keller_opt)},{shape_flag},{str(dach_opts)},{str(ober_opt)}\n")
+    f.write(f"{record_id},{str(num_floors)},{str(dach_opt)},{str(keller_opt)},{shape_found},{str(dach_opts)},{str(ober_opt)}\n")
     f.close()
     
 print("Done!!!")

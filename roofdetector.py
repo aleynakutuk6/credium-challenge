@@ -12,8 +12,11 @@ class RoofDetector:
     
     def detect(self, contours, no_dach_num_floors, img_path=None):
         """
-        
-        
+            Args:
+                contours: contours of the segmentation mask. These are extracted using cv2.
+                no_dach_num_floors: the number of floors but roof is not included.
+            Returns:
+                res_flag: returns True or False depends on roof existence.
         """
         strokes = self.contour_to_stroke3(contours)
         simplified_strokes = apply_RDP(strokes, is_absolute=True, epsilon=5.0)
@@ -27,13 +30,13 @@ class RoofDetector:
             for x, y, _ in simplified_strokes:
                 out_img = cv2.circle(out_img, (int(x), int(y)), 1, (0, 0, 255), 2)
                 
-            for c in corners:
-                if c is not None:
-                    out_img = cv2.circle(out_img, c, 2, (255, 0, 0), 2)
-                
             for m in middles:
                 if m is not None:
                     out_img = cv2.circle(out_img, m, 2, (0, 255, 0), 2)
+                
+            for c in corners:
+                if c is not None:
+                    out_img = cv2.circle(out_img, c, 2, (255, 0, 0), 2)
         
             cv2.imwrite(img_path, out_img)
         
@@ -41,7 +44,10 @@ class RoofDetector:
     
     
     def contour_to_stroke3(self, contours: np.ndarray):
-        
+        """
+            This function takes contours of page segmentation masks and 
+                converts them into stroke-3 format (frequently used in sketch representation). 
+        """
         strokes = []
         for c in contours:
             c = c[:,0,:]
@@ -58,6 +64,11 @@ class RoofDetector:
         
 
     def get_main_pts(self, strokes):
+        """
+            This function takes contours in stroke-3 format and finds the four corners of the shape along with the roof top points
+            in any 90 degree rotation (e.g. a house can flipped or rotated in the pdf file).
+        """
+        
         xmin, ymin, xmax, ymax = get_absolute_bounds(strokes)
         cx_l, cy_l = xmin + (xmax - xmin) / 5, ymin + (ymax - ymin) / 5
         cx_r, cy_r = xmin + 4 * (xmax - xmin) / 5, ymin + 4 * (ymax - ymin) / 5
@@ -68,6 +79,7 @@ class RoofDetector:
         topleft, topright, bottomleft, bottomright = None, None, None, None
         midtop, midbottom, midleft, midright = None, None, None, None
         
+        # 
         for o in y_order:
             x, y = int(strokes[o, 0]), int(strokes[o, 1])
             if x < cx_l and topleft is None: topleft = [x, y]
@@ -102,32 +114,41 @@ class RoofDetector:
     def check_roof_existence(self, corners, middles, no_dach_num_floors):
         tl, tr, bl, br = corners
         mt, mb, ml, mr = middles
-    
+        # print("corners:", corners)
+        # print("middles:", middles)
         if mt is not None and mt[1] < min(tl[1], tr[1]):
             h = max(bl[1], br[1]) - min(tl[1], tr[1])
             roof_len = min(tl[1], tr[1]) - mt[1]
-            min_roof_len = 0.5 * (h / no_dach_num_floors)
-            if roof_len > min_roof_len: 
+            min_roof_len = 0.75 * (h / no_dach_num_floors)
+            # print("case 1")
+            # print(min_roof_len, roof_len)
+            if roof_len > min_roof_len:
                 return True
         
         if mb is not None and mb[1] > max(bl[1], br[1]):
             h = max(bl[1], br[1]) - min(tl[1], tr[1])
             roof_len = mb[1] - max(bl[1], br[1])
-            min_roof_len = 0.5 * (h / no_dach_num_floors)
+            min_roof_len = 0.75 * (h / no_dach_num_floors)
+            # print("case 2")
+            # print(min_roof_len, roof_len)
             if roof_len > min_roof_len: 
                 return True
             
         if ml is not None and ml[0] < min(tl[0], bl[0]):
             h = max(tr[0], br[0]) - min(tl[0], bl[0])
             roof_len = min(tl[0], bl[0]) - ml[0]
-            min_roof_len = 0.5 * (h / no_dach_num_floors)
+            min_roof_len = 0.75 * (h / no_dach_num_floors)
+            # print("case 3")
+            # print(min_roof_len, roof_len)
             if roof_len > roof_len: 
                 return True
         
         if mr is not None and mr[0] > max(tr[0], br[0]):
             h = max(tr[0], br[0]) - min(tl[0], bl[0])
             roof_len = mr[0] - max(tr[0], br[0])
-            min_roof_len = 0.5 * (h / no_dach_num_floors)
+            min_roof_len = 0.75 * (h / no_dach_num_floors)
+            # print("case 4")
+            # print(min_roof_len, roof_len)
             if roof_len > min_roof_len:
                 return True
         

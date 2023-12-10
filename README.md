@@ -65,3 +65,10 @@ Click the links below to download the checkpoint for the corresponding model typ
 - **OCR:** [2OCR](https://2ocr.com/online-ocr-german/), [paddleOCR](https://github.com/PaddlePaddle/PaddleOCR), [easyOCR](https://pypi.org/project/easyocr/)
 - **Image Segmentation:** [segment_anything](https://github.com/facebookresearch/segment-anything)
 - [**OpenCV**](https://opencv.org/)
+
+
+## <a name="VisualAnalysisonRoofExistence"></a>Visual Analysis on Roof Existence
+
+![roof-existence](assets/roof-existence.png?raw=true)
+
+With our algorithm, the corners of the house and the roof top point are detected. Based on roof length and an approximated floor length, the roof existence is evaluated.
