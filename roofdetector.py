@@ -79,7 +79,6 @@ class RoofDetector:
         topleft, topright, bottomleft, bottomright = None, None, None, None
         midtop, midbottom, midleft, midright = None, None, None, None
         
-        # 
         for o in y_order:
             x, y = int(strokes[o, 0]), int(strokes[o, 1])
             if x < cx_l and topleft is None: topleft = [x, y]
@@ -112,10 +111,16 @@ class RoofDetector:
     
 
     def check_roof_existence(self, corners, middles, no_dach_num_floors):
+        """
+            Checks if the middle points (possible roof tops) are between the corners and has a significant
+            height compared to the closest side between corners.
+        """
         tl, tr, bl, br = corners
         mt, mb, ml, mr = middles
         # print("corners:", corners)
         # print("middles:", middles)
+        
+        # If the middle point is on the top
         if mt is not None and mt[1] < min(tl[1], tr[1]):
             h = max(bl[1], br[1]) - min(tl[1], tr[1])
             roof_len = min(tl[1], tr[1]) - mt[1]
@@ -125,6 +130,7 @@ class RoofDetector:
             if roof_len > min_roof_len:
                 return True
         
+        # If the middle point is on the bottom
         if mb is not None and mb[1] > max(bl[1], br[1]):
             h = max(bl[1], br[1]) - min(tl[1], tr[1])
             roof_len = mb[1] - max(bl[1], br[1])
@@ -133,7 +139,8 @@ class RoofDetector:
             # print(min_roof_len, roof_len)
             if roof_len > min_roof_len: 
                 return True
-            
+        
+        # If the middle point is on the left
         if ml is not None and ml[0] < min(tl[0], bl[0]):
             h = max(tr[0], br[0]) - min(tl[0], bl[0])
             roof_len = min(tl[0], bl[0]) - ml[0]
@@ -143,6 +150,7 @@ class RoofDetector:
             if roof_len > roof_len: 
                 return True
         
+        # If the middle point is on the right
         if mr is not None and mr[0] > max(tr[0], br[0]):
             h = max(tr[0], br[0]) - min(tl[0], bl[0])
             roof_len = mr[0] - max(tr[0], br[0])

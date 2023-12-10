@@ -4,3 +4,16 @@ record_id,num-floors,roof-conversion,keller-existence,pentagon-existence,roof-op
 105,3,0,1,True,[0],0
 113,3,0,1,False,[0],0
 148,2,2,0,False,[2],1
+306,3,0,1,True,[0],0
+372,4,1,1,True,[2],1
+477,2,0,0,False,[0],0
+560,1,2,0,False,[2],0
+653,3,0,1,False,[0],0
+674,4,0,1,False,[0],1
+868,1,2,0,False,[2],0
+907,2,1,0,True,[0, 1],0
+962,3,2,1,False,[0, 1],1
+1009,3,0,1,True,[0],0
+1053,3,0,1,False,[0],0
+1115,2,0,0,False,[0],0
+1166,3,1,1,True,[2],0

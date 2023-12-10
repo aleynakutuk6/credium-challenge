@@ -321,8 +321,12 @@ def detect_roof_from_masks(masks, no_dach_num_floors, img_path):
 
         if img_path is not None:
             res_flag = detector.detect(contours, no_dach_num_floors, img_path=os.path.join(img_path, f"{i}.png"))
+        else:
+            res_flag = detector.detect(contours, no_dach_num_floors)
+        
         if res_flag:
             return True
+    
     return False
 
 
